@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>실시간 스마트 날씨</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        /* =========================================
+           1. CSS 스타일 영역
+        ========================================= */
+        :root {
+            --bg-color: #f4f4f9;
+            --text-color: #333;
+            --card-bg: rgba(255, 255, 255, 0.8);
+            --alert-bg: #ff4757;
+            --notice-bg: #ffa500;
+            --input-bg: #ffffff;
+        }
+
+        body.theme-dark {
+            --bg-color: #1e1e24;
+            --text-color: #f4f4f9;
+            --card-bg: rgba(40, 40, 45, 0.8);
+            --input-bg: #2a2a30;
+        }
+
+        body.bg-default { background: var(--bg-color); }
+        body.bg-clear { background: linear-gradient(to bottom, #4facfe 0%, #00f2fe 100%); color: #fff; }
+        body.bg-cloudy { background: linear-gradient(to bottom, #8e9eab 0%, #eef2f3 100%); color: #333; }
+        body.bg-rain { background: linear-gradient(to bottom, #3a404d 0%, #181b22 100%); color: #fff; }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Pretendard', -apple-system, sans-serif;
+            color: var(--text-color);
+            transition: background 0.5s, color 0.5s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        /* 알림 배너 스타일 */
+        #alert-banner {
+            width: 100%;
+            color: white;
+            text-align: center;
+            padding: 12px;
+            font-weight: bold;
+            font-size: 1.1rem;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        .bg-alert-red { background: var(--alert-bg); }
+        .bg-alert-orange { background: var(--notice-bg); }
+        .hidden { display: none; }
+
+        header {
+            width: 100%;
+            max-width: 600px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+        }
+
+        button {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            background: var(--text-color);
+            color: var(--bg-color);
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+
+        main { width: 100%; max-width: 600px; padding: 0 20px; }
+
+        .search-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            width: 100%;
+        }
+        
+        #search-input {
+            flex-grow: 1;
+            padding: 12px 15px;
+            border-radius: 20px;
+            border: none;
+            outline: none;
+            font-family: inherit;
+            background: var(--input-bg);
+            color: var(--text-color);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .weather-main { display: flex; align-items: center; justify-content: center; gap: 15px; margin: 20px 0; }
+        .weather-main span.emoji { font-size: 4rem; }
+        .weather-main h1 { font-size: 3.5rem; }
+        .weather-details { display: flex; justify-content: space-around; margin-top: 15px; font-size: 0.95rem; font-weight: bold; }
+
+        #index-list { list-style: none; margin-top: 15px; }
+        #index-list li { margin-bottom: 10px; font-weight: bold; font-size: 1.1rem; }
+
+        #map { height: 300px; width: 100%; border-radius: 10px; margin-top: 10px; z-index: 1; }
+    </style>
+</head>
+<body class="theme-light bg-default">
+
+    <div id="alert-banner" class="hidden"></div>
+
+    <header>
+        <h1>🌤️ Smart Weather</h1>
+        <button id="theme-toggle">🌙 다크 모드</button>
+    </header>
+
+    <main>
+        <div class="search-container">
+            <input type="text" id="search-input" placeholder="도시, 지역명을 검색하세요 (예: 부산, 서울)">
+            <button id="search-btn">🔍 검색</button>
+        </div>
+
+        <section id="current-weather" class="card">
+            <h2 id="location-name">위치 확인 중...📍</h2>
+            <div class="weather-main">
+                <span id="weather-icon" class="emoji">⏳</span>
+                <h1 id="temperature">--°C</h1>
+            </div>
+            <p id="weather-description" style="text-align: center; font-size: 1.2rem; font-weight: bold;">날씨 정보를 불러오는 중입니다.</p>
+            <div class="weather-details">
+                <span>바람: <span id="wind">--</span> m/s</span>
+                <span>습도: <span id="humidity">--</span>%</span>
+                <span>유럽 대기질: <span id="aqi">--</span></span>
+            </div>
+        </section>
+
+        <section id="life-index" class="card">
+            <h3>💡 오늘의 생활 지수</h3>
+            <ul id="index-list">
+                <li>데이터를 분석 중입니다...</li>
+            </ul>
+        </section>
+
+        <section id="radar-section" class="card">
+            <h3>🗺️ 선택된 위치 지도</h3>
+            <div id="map"></div>
+        </section>
+    </main>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        /* =========================================
+           2. Javascript 로직 (비 예정 감지 기능 포함)
+        ========================================= */
+        document.addEventListener('DOMContentLoaded', () => {
+            const themeToggle = document.getElementById('theme-toggle');
+            const searchInput = document.getElementById('search-input');
+            const searchBtn = document.getElementById('search-btn');
+            
+            let map, marker;
+
+            themeToggle.addEventListener('click', () => {
+                document.body.classList.toggle('theme-dark');
+                themeToggle.textContent = document.body.classList.contains('theme-dark') ? '☀️ 라이트 모드' : '🌙 다크 모드';
+            });
+
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => fetchAllData(position.coords.latitude, position.coords.longitude),
+                    () => document.getElementById('location-name').textContent = "위치 권한이 필요합니다. 검색창을 이용해주세요."
+                );
+            }
+
+            searchBtn.addEventListener('click', handleSearch);
+            searchInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleSearch(); });
+
+            async function handleSearch() {
+                const query = searchInput.value.trim();
+                if (!query) return;
+                document.getElementById('location-name').textContent = "검색 중...🔍";
+
+                try {
+                    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`);
+                    const data = await res.json();
+
+                    if (data.length > 0) {
+                        const lat = parseFloat(data[0].lat);
+                        const lon = parseFloat(data[0].lon);
+                        const displayNameArr = data[0].display_name.split(',');
+                        const shortName = displayNameArr[0] + (displayNameArr[1] ? ',' + displayNameArr[1] : '');
+                        fetchAllData(lat, lon, shortName);
+                    } else {
+                        alert("해당 지역을 찾을 수 없습니다.");
+                        document.getElementById('location-name').textContent = "검색 실패 ❌";
+                    }
+                } catch (error) {
+                    console.error(error);
+                }
+            }
+
+            async function fetchAllData(lat, lon, providedName = null) {
+                try {
+                    // 강수 확률(precipitation_probability)을 가져오도록 API 파라미터 수정
+                    const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&hourly=relative_humidity_2m,precipitation_probability`);
+                    const weatherData = await weatherRes.json();
+
+                    const aqiRes = await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=european_aqi`);
+                    const aqiData = await aqiRes.json();
+
+                    let locationName = providedName;
+                    if (!locationName) {
+                        const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
+                        const geoData = await geoRes.json();
+                        locationName = geoData.address.city || geoData.address.town || geoData.address.suburb || geoData.address.country;
+                    }
+
+                    updateUI(weatherData, aqiData, locationName);
+                    updateMap(lat, lon, locationName);
+                } catch (error) {
+                    console.error(error);
+                }
+            }
+
+            function interpretWeatherCode(code) {
+                if (code === 0) return { text: "맑음", emoji: "☀️", type: "clear" };
+                if (code <= 3) return { text: "구름 낌/흐림", emoji: "☁️", type: "cloudy" };
+                if (code <= 48) return { text: "안개", emoji: "🌫️", type: "cloudy" };
+                if (code <= 67) return { text: "비 내리는 중", emoji: "🌧️", type: "rain" };
+                if (code <= 77) return { text: "눈 내리는 중", emoji: "❄️", type: "rain" };
+                if (code <= 82) return { text: "소나기", emoji: "🌦️", type: "rain" };
+                return { text: "뇌우/악천후", emoji: "⛈️", type: "rain" };
+            }
+
+            function updateUI(weather, aqi, locationName) {
+                const current = weather.current_weather;
+                const weatherInfo = interpretWeatherCode(current.weathercode);
+                const currentHumidity = weather.hourly.relative_humidity_2m[0]; 
+
+                document.getElementById('location-name').textContent = `${locationName} 📍`;
+                document.getElementById('temperature').textContent = `${current.temperature}°C`;
+                document.getElementById('wind').textContent = current.windspeed;
+                document.getElementById('humidity').textContent = currentHumidity;
+                document.getElementById('weather-description').textContent = weatherInfo.text;
+                document.getElementById('weather-icon').textContent = weatherInfo.emoji;
+                
+                const currentAqi = aqi.current.european_aqi;
+                let aqiText = currentAqi <= 20 ? '매우 좋음 🔵' : currentAqi <= 40 ? '좋음 🟢' : currentAqi <= 60 ? '보통 🟡' : '나쁨 🔴';
+                document.getElementById('aqi').textContent = `${currentAqi} (${aqiText})`;
+
+                document.body.className = `bg-${weatherInfo.type} ${document.body.classList.contains('theme-dark') ? 'theme-dark' : ''}`;
+
+                // =========================================
+                // [핵심] 핵심 로직: 향후 12시간 내 비 예정 감지
+                // =========================================
+                const hourlyPrecipitation = weather.hourly.precipitation_probability;
+                const next12HoursPrecip = hourlyPrecipitation.slice(0, 12); // 앞으로 12시간 데이터 추출
+                const maxPrecipProbability = Math.max(...next12HoursPrecip); // 최대 강수 확률 계산
+
+                const banner = document.getElementById('alert-banner');
+                
+                if (weatherInfo.type === 'rain') {
+                    // 1. 현재 이미 비가 오고 있는 경우
+                    banner.textContent = "🌧️ 현재 비(또는 눈)가 내리고 있습니다. 우산을 꼭 챙기세요!";
+                    banner.className = "bg-alert-red";
+                } else if (maxPrecipProbability >= 40) {
+                    // 2. 현재는 안 오지만, 12시간 내에 강수확률 40% 이상인 경우 (비 예정!)
+                    banner.textContent = `⏰ [비 예정] 향후 몇 시간 내에 비 소식이 있습니다! (최대 강수확률: ${maxPrecipProbability}%)`;
+                    banner.className = "bg-alert-orange";
+                } else {
+                    // 3. 당분간 비 소식이 없는 경우
+                    banner.className = "hidden";
+                }
+
+                generateLifeIndex(current.temperature, currentHumidity, weatherInfo.type, maxPrecipProbability);
+            }
+
+            function generateLifeIndex(temp, humidity, type, maxPrecip) {
+                const indexList = document.getElementById('index-list');
+                indexList.innerHTML = ""; 
+
+                // 향후 비 소식(maxPrecip)까지 고려하여 생활 지수 판단
+                const carWash = (type === 'clear' && maxPrecip < 40) ? "🚗 세차하기 아주 좋은 날이에요!" : "🚫 조만간 비 소식이 있거나 흐려서 세차를 비추천합니다.";
+                const laundry = (humidity < 60 && type === 'clear' && maxPrecip < 40) ? "👕 빨래가 뽀송하게 잘 마르는 날입니다." : "🧺 실내 건조를 추천해요.";
+                const walk = (temp >= 10 && temp <= 25 && type !== 'rain' && maxPrecip < 50) ? "🏃 산책하기 완벽한 날씨입니다." : "🏠 실내 활동을 권장합니다.";
+
+                indexList.innerHTML = `<li>${carWash}</li><li>${laundry}</li><li>${walk}</li>`;
+            }
+
+            function updateMap(lat, lon, locationName) {
+                if (!map) {
+                    map = L.map('map').setView([lat, lon], 12);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        maxZoom: 18,
+                        attribution: '© OpenStreetMap'
+                    }).addTo(map);
+                    
+                    marker = L.marker([lat, lon]).addTo(map)
+                        .bindPopup(`<b>${locationName}</b><br>관측 기준점`)
+                        .openPopup();
+                } else {
+                    map.flyTo([lat, lon], 12);
+                    marker.setLatLng([lat, lon])
+                        .bindPopup(`<b>${locationName}</b><br>관측 기준점`)
+                        .openPopup();
+                }
+            }
+        });
+    </script>
+</body>
+</html>
